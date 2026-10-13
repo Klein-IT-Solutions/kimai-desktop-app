@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Name=Kimai Tracker
+Comment=Minimalist desktop time tracker for Kimai
+Exec=kimai-tracker
+Terminal=false
+Type=Application
+Icon=kimai-tracker
+Categories=Office;Utility;
+Keywords=kimai;time;tracking;zeiterfassung;timesheet;
+StartupWMClass=kimai-tracker

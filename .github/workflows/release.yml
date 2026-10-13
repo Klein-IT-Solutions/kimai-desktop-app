@@ -1,0 +1,238 @@
+# Builds a new release with its own version and tag.
+#
+# Two ways to release:
+#   1. Actions → Release → Run workflow, choose patch / minor / major:
+#      the next version is derived from the latest v* tag (v0.1.0 → v0.1.1),
+#      the tag is created and the release is built from it.
+#   2. Push a tag yourself: git tag v1.2.3 && git push origin v1.2.3
+#
+# The version is compiled into the app and used for all packages
+# (Linux: .deb, Windows: installer + portable .exe).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Which part of the version to increase
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      version:
+        description: Exact version instead (e.g. 1.0.0) – leave empty to bump
+        type: string
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version and create tag
+        id: v
+        env:
+          BUMP: ${{ inputs.bump }}
+          VERSION_INPUT: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            tag="$GITHUB_REF_NAME"
+          elif [ -n "$VERSION_INPUT" ]; then
+            tag="v${VERSION_INPUT#v}"
+          else
+            last=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
+            if [ -z "$last" ]; then
+              tag="v0.1.0"
+            else
+              IFS=. read -r major minor patch <<< "${last#v}"
+              case "$BUMP" in
+                major) major=$((major + 1)); minor=0; patch=0 ;;
+                minor) minor=$((minor + 1)); patch=0 ;;
+                *)     patch=$((patch + 1)) ;;
+              esac
+              tag="v${major}.${minor}.${patch}"
+            fi
+          fi
+          if ! echo "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::Tag $tag is not a version like v1.2.3"; exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" != "push" ] && git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+            # Existing version: build that tag again (e.g. to add missing files).
+            echo "::notice::Tag $tag already exists – rebuilding it"
+          elif [ "$GITHUB_EVENT_NAME" != "push" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$tag" -m "Kimai Tracker $tag"
+            git push origin "$tag"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "Releasing $tag" >> "$GITHUB_STEP_SUMMARY"
+
+  linux:
+    needs: version
+    runs-on: ubuntu-24.04 # GTK 4 / WebKitGTK 6.0
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config cmake file \
+            libgtk-4-dev libwebkitgtk-6.0-dev
+
+      - name: Tools and frontend dependencies
+        run: make deps
+
+      - name: Test
+        run: make test
+
+      - name: Build packages
+        run: make package VERSION="$VERSION"
+
+      - name: Collect artifacts
+        run: |
+          mkdir dist
+          cp bin/kimai-tracker.deb "dist/kimai-tracker_${VERSION}_amd64.deb"
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # MinGW-w64 gcc for cgo (whisper.cpp, miniaudio), CMake/Ninja, NSIS.
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          path-type: inherit
+          install: >-
+            make git
+            mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-nsis
+
+      - name: Tools and frontend dependencies
+        run: |
+          echo "$(cygpath "$(go env GOPATH)")/bin" >> "$GITHUB_PATH"
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.28
+          (cd frontend && npm ci)
+          make whisper
+
+      - name: Test
+        run: go test ./internal/...
+
+      - name: Build installer
+        run: make package VERSION="$VERSION"
+
+      - name: Collect artifacts
+        run: |
+          mkdir dist
+          cp bin/kimai-tracker-amd64-installer.exe "dist/Kimai-Tracker-${VERSION}-windows-x64-setup.exe"
+          cp bin/kimai-tracker.exe "dist/Kimai-Tracker-${VERSION}-windows-x64-portable.exe"
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+
+  release:
+    needs: [version, linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          cat > notes.md <<NOTES
+          ## Download
+
+          | System | Datei |
+          | --- | --- |
+          | **Windows 10/11** | \`Kimai-Tracker-${VERSION}-windows-x64-setup.exe\` (Installer) oder \`…-portable.exe\` (ohne Installation) |
+          | **Ubuntu 24.04+ / Debian 13+** | \`kimai-tracker_${VERSION}_amd64.deb\` – installieren mit \`sudo apt install ./kimai-tracker_${VERSION}_amd64.deb\` |
+
+          Prüfsummen: \`SHA256SUMS\`.
+
+          Für Einzelpersonen kostenlos; Teams, Whitelabel und Weitervertrieb benötigen eine kommerzielle Lizenz – siehe [LICENSE](https://github.com/klein-it-solutions/kimai-desktop-app/blob/main/LICENSE).
+          NOTES
+          # A release created by hand (or an earlier run) only gets the files.
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+            exit 0
+          fi
+          prerelease=""
+          case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$TAG" dist/* \
+            --verify-tag \
+            --title "Kimai Tracker $TAG" \
+            --notes-file notes.md \
+            --generate-notes \
+            $prerelease

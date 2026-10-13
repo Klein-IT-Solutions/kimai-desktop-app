@@ -1,0 +1,34 @@
+# Local Kimai test instance for development and integration tests.
+# Use `make kimai-up` / `make kimai-down` instead of calling this directly.
+name: kimai-tracker-dev
+
+services:
+  db:
+    image: mariadb:11
+    environment:
+      MARIADB_DATABASE: kimai
+      MARIADB_USER: kimai
+      MARIADB_PASSWORD: kimai
+      MARIADB_ROOT_PASSWORD: root
+    volumes:
+      - db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 3s
+      retries: 30
+
+  kimai:
+    image: kimai/kimai2:apache
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8001:8001"
+    environment:
+      DATABASE_URL: "mysql://kimai:kimai@db/kimai?charset=utf8mb4&serverVersion=11.4.0-MariaDB"
+      ADMINMAIL: admin@example.com
+      ADMINPASS: changeme123
+      TRUSTED_HOSTS: '^(localhost|127\.0\.0\.1)$$'
+
+volumes:
+  db:

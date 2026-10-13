@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<MsixPackagingToolTemplate
+    xmlns="http://schemas.microsoft.com/msix/packaging/msixpackagingtool/template/2022">
+    <Settings
+        AllowTelemetry="false"
+        ApplyACLsToPackageFiles="true"
+        GenerateCommandLineFile="true"
+        AllowPromptForPassword="false">
+    </Settings>
+    <Installer
+        Path="kimai-tracker"
+        Arguments=""
+        InstallLocation="C:\Program Files\Klein IT Solutions\Kimai Tracker">
+    </Installer>
+    <PackageInformation
+        PackageName="Kimai Tracker"
+        PackageDisplayName="Kimai Tracker"
+        PublisherName="CN=Klein IT Solutions"
+        PublisherDisplayName="Klein IT Solutions"
+        Version="0.1.0.0"
+        PackageDescription="Minimalist desktop time tracker for Kimai">
+        <Capabilities>
+            <Capability Name="runFullTrust" />
+            
+        </Capabilities>
+        <Applications>
+            <Application
+                Id="solutions.klein-it.kimai-tracker"
+                Description="Minimalist desktop time tracker for Kimai"
+                DisplayName="Kimai Tracker"
+                ExecutableName="kimai-tracker"
+                EntryPoint="Windows.FullTrustApplication">
+                
+            </Application>
+        </Applications>
+        <Resources>
+            <Resource Language="en-us" />
+        </Resources>
+        <Dependencies>
+            <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.19041.0" />
+        </Dependencies>
+        <Properties>
+            <Framework>false</Framework>
+            <DisplayName>Kimai Tracker</DisplayName>
+            <PublisherDisplayName>Klein IT Solutions</PublisherDisplayName>
+            <Description>Minimalist desktop time tracker for Kimai</Description>
+            <Logo>Assets\AppIcon.png</Logo>
+        </Properties>
+    </PackageInformation>
+    <SaveLocation PackagePath="kimai-tracker.msix" />
+    <PackageIntegrity>
+        <CertificatePath></CertificatePath>
+    </PackageIntegrity>
+</MsixPackagingToolTemplate>

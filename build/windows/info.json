@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.0"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.1.0",
+			"CompanyName": "Klein IT Solutions",
+			"FileDescription": "Desktop time tracking for Kimai",
+			"LegalCopyright": "(c) 2026, Klein IT Solutions and the Kimai Tracker contributors",
+			"ProductName": "Kimai Tracker",
+			"Comments": "Desktop time tracking for Kimai"
+		}
+	}
+}

@@ -1,0 +1,137 @@
+﻿Kimai Tracker – Lizenzbedingungen, Version 1.0
+Copyright (c) 2026 Klein IT Solutions (https://klein-it.solutions)
+Alle Rechte vorbehalten, soweit nachstehend nicht ausdrücklich eingeräumt.
+
+KURZFASSUNG (unverbindlich – maßgeblich ist der Lizenztext darunter)
+
+  Kostenlos:  Eine einzelne Person darf Kimai Tracker privat und beruflich
+              nutzen, auch als Selbstständige oder Freiberufler, solange
+              Branding und Hinweise unverändert bleiben.
+  Kostenpflichtig (kommerzielle Lizenz):
+              - Nutzung in einer Organisation durch mehr als eine Person,
+              - Ändern, Entfernen oder Ersetzen von Branding und Hinweisen
+                (Whitelabel),
+              - Weiterverkauf, Vertrieb unter eigenem Namen oder als Teil
+                eigener Produkte und Dienstleistungen.
+  Kontakt:    https://klein-it.solutions
+
+-------------------------------------------------------------------------------
+
+§ 1 Gegenstand und Begriffe
+
+(1) Diese Bedingungen regeln die Nutzung der Software "Kimai Tracker"
+    einschließlich Quellcode, ausführbarer Programme, Installationspakete,
+    Dokumentation, Logos und Grafiken (die "Software") von Klein IT Solutions
+    (der "Lizenzgeber").
+
+(2) "Branding und Hinweise" sind der Name Klein IT Solutions, dessen Logo,
+    die Verweise auf https://klein-it.solutions, der Hinweis im Bereich
+    "Über" der Anwendung, Urheberrechtsvermerke sowie diese Lizenzbedingungen.
+
+(3) "Organisation" ist jede juristische Person, Personengesellschaft,
+    Behörde, jeder Verein und jeder sonstige Zusammenschluss sowie jedes mit
+    ihr verbundene Unternehmen (§ 15 AktG).
+
+(4) "Nutzer" ist jede natürliche Person, die die Software verwendet.
+
+(5) Die Software enthält Komponenten Dritter, die unter eigenen Lizenzen
+    stehen (siehe THIRD_PARTY_NOTICES.md). Für diese Komponenten gelten
+    ausschließlich deren Lizenzen; die vorliegenden Bedingungen schränken die
+    dort eingeräumten Rechte nicht ein.
+
+§ 2 Kostenlose Einzelnutzerlizenz
+
+(1) Der Lizenzgeber räumt jeder natürlichen Person unentgeltlich das einfache,
+    nicht übertragbare, weltweite und zeitlich unbegrenzte Recht ein, die
+    Software für eigene private und berufliche Zwecke zu nutzen, auch als
+    Selbstständige oder Freiberufler, auf beliebig vielen eigenen Geräten.
+
+(2) Nutzt eine Person die Software im Rahmen ihrer Tätigkeit für eine
+    Organisation, ist dies nach Absatz 1 nur zulässig, solange innerhalb dieser
+    Organisation insgesamt höchstens ein Nutzer die Software verwendet.
+
+(3) Der Quellcode darf eingesehen, kompiliert und für den eigenen Gebrauch
+    nach Absatz 1 angepasst werden (z. B. zur Fehlerbehebung). Branding und
+    Hinweise müssen dabei unverändert und vollständig erhalten bleiben.
+
+(4) Unveränderte Kopien der vom Lizenzgeber veröffentlichten Software dürfen
+    unentgeltlich an Dritte weitergegeben werden, sofern diese Bedingungen
+    beiliegen. Für den Empfänger gelten diese Bedingungen unmittelbar.
+
+(5) Das Ansehen und Forken des Quellcodes über die Funktionen von GitHub im
+    Rahmen der GitHub-Nutzungsbedingungen bleibt unberührt.
+
+§ 3 Lizenzpflichtige Nutzung
+
+Folgende Handlungen bedürfen einer gesonderten, kostenpflichtigen Lizenz des
+Lizenzgebers (kommerzielle Lizenz):
+
+  a) die Nutzung der Software innerhalb einer Organisation durch mehr als
+     einen Nutzer sowie die Bereitstellung, Installation oder Verteilung der
+     Software durch oder für eine Organisation an mehrere Nutzer;
+  b) das Ändern, Entfernen, Verdecken oder Ersetzen von Branding und Hinweisen,
+     insbesondere das Versehen der Software mit eigenem oder fremdem Namen,
+     Logo oder Hinweisen (Whitelabel);
+  c) der Vertrieb, die Vermietung oder sonstige Weitergabe der Software gegen
+     Entgelt, die Weitergabe veränderter Fassungen sowie die Nutzung der
+     Software oder von Teilen davon als Bestandteil eigener Produkte oder
+     Dienstleistungen.
+
+Die Bedingungen einer kommerziellen Lizenz (Umfang, Nutzerzahl, Vergütung)
+werden gesondert vereinbart. Anfragen: https://klein-it.solutions
+
+§ 4 Kennzeichen
+
+Name und Logo von Klein IT Solutions werden nur als Bestandteil der
+unveränderten Software lizenziert. "Kimai" ist der Name eines unabhängigen
+Open-Source-Projekts; die Software ist kein offizielles Produkt des
+Kimai-Projekts und steht mit diesem in keiner Verbindung.
+
+§ 5 Beiträge
+
+Wer dem Lizenzgeber Beiträge zur Software übermittelt (z. B. Pull Requests,
+Patches, Übersetzungen), räumt dem Lizenzgeber daran das einfache, zeitlich und
+räumlich unbeschränkte, unentgeltliche, übertragbare und unterlizenzierbare
+Recht ein, die Beiträge in jeder Form zu nutzen, zu bearbeiten und unter
+beliebigen Bedingungen – auch kommerziell – zu lizenzieren, und versichert, zu
+dieser Rechteeinräumung berechtigt zu sein.
+
+§ 6 Gewährleistung und Haftung bei unentgeltlicher Nutzung
+
+(1) Für die nach § 2 unentgeltlich überlassene Software haftet der Lizenzgeber
+    nur für Vorsatz und grobe Fahrlässigkeit sowie für arglistig
+    verschwiegene Mängel. Die Haftung nach dem Produkthaftungsgesetz sowie für
+    Schäden aus der Verletzung des Lebens, des Körpers oder der Gesundheit
+    bleibt unberührt.
+
+(2) Die Software arbeitet mit Kimai-Servern Dritter zusammen. Für deren
+    Verfügbarkeit, Daten und Abrechnungen ist der Lizenzgeber nicht
+    verantwortlich. Nutzer sollten erfasste Zeiten in Kimai prüfen.
+
+(3) Für kommerzielle Lizenzen gelten die dort vereinbarten Bedingungen.
+
+§ 7 Beendigung
+
+Verstößt ein Lizenznehmer gegen diese Bedingungen, enden seine Rechte
+automatisch. Sie leben wieder auf, wenn der Verstoß innerhalb von 30 Tagen nach
+Hinweis durch den Lizenzgeber vollständig beseitigt wird, beim ersten Verstoß
+höchstens einmal.
+
+§ 8 Frühere Versionen
+
+Versionen der Software, die vor dieser Lizenz unter der MIT-Lizenz
+veröffentlicht wurden (bis einschließlich Version 0.0.1), bleiben für bereits
+eingeräumte Rechte unter der MIT-Lizenz. Diese Bedingungen gelten für alle
+späteren Versionen.
+
+§ 9 Schlussbestimmungen
+
+(1) Es gilt das Recht der Bundesrepublik Deutschland unter Ausschluss des
+    UN-Kaufrechts.
+
+(2) Ist der Lizenznehmer Kaufmann, juristische Person des öffentlichen Rechts
+    oder öffentlich-rechtliches Sondervermögen, ist Gerichtsstand der Sitz des
+    Lizenzgebers.
+
+(3) Sollte eine Bestimmung unwirksam sein, bleibt die Wirksamkeit der übrigen
+    Bestimmungen unberührt.

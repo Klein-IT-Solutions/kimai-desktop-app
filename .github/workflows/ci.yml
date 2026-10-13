@@ -1,0 +1,94 @@
+# Lint, tests and a build for every push and pull request.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config cmake \
+            libgtk-4-dev libwebkitgtk-6.0-dev
+
+      - name: Tools and frontend dependencies
+        run: make deps
+
+      - name: Lint
+        run: make lint
+
+      - name: Third-party notices up to date
+        run: |
+          scripts/third-party-notices.sh
+          git diff --exit-code THIRD_PARTY_NOTICES.md build/windows/nsis/LICENSE.txt || { echo "::error::THIRD_PARTY_NOTICES.md is outdated – run 'make notices'"; exit 1; }
+
+      - name: Test
+        run: make test
+
+      - name: Build
+        run: make build
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          path-type: inherit
+          install: >-
+            make git
+            mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-nsis
+
+      - name: Tools and frontend dependencies
+        run: |
+          echo "$(cygpath "$(go env GOPATH)")/bin" >> "$GITHUB_PATH"
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.28
+          (cd frontend && npm ci)
+          make whisper
+
+      - name: Test
+        run: go test ./internal/...
+
+      - name: Build installer
+        run: make package
