@@ -29,6 +29,13 @@ export function Customers(refresh: boolean): $CancellablePromise<$models.OptionL
 }
 
 /**
+ * Pending returns how many entries wait to be sent to Kimai.
+ */
+export function Pending(): $CancellablePromise<$models.PendingStatus> {
+    return $Call.ByID(3952172407);
+}
+
+/**
  * Projects lists the projects of a customer.
  */
 export function Projects(customerID: number, refresh: boolean): $CancellablePromise<$models.OptionList> {
@@ -74,8 +81,9 @@ export function Stop(): $CancellablePromise<$models.TrackerState> {
 }
 
 /**
- * Sync fetches the running timer from Kimai and adopts it. A timer stopped
- * elsewhere is reflected as stopped; the selection is kept.
+ * Sync first sends entries saved offline to Kimai, then fetches the running
+ * timer from Kimai and adopts it. A timer stopped elsewhere is reflected as
+ * stopped; the selection is kept.
  */
 export function Sync(): $CancellablePromise<$models.TrackerState> {
     return $Call.ByID(1570177679);

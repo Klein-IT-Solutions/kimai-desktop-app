@@ -22,6 +22,10 @@ type fakeEntries struct {
 	nextID int
 	query  map[string]string
 	last   map[string]any
+	// offline answers every request with 502 (proxy cannot reach Kimai).
+	offline bool
+	// reject answers new entries with a validation error.
+	reject bool
 }
 
 func newEntriesFixture(t *testing.T) (*EntriesService, *TrackerService, *fakeEntries) {
@@ -39,6 +43,10 @@ func newEntriesFixture(t *testing.T) (*EntriesService, *TrackerService, *fakeEnt
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
+		if f.offline {
+			http.Error(w, "down", http.StatusBadGateway)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		body := map[string]any{}
 		if b, _ := io.ReadAll(r.Body); len(b) > 0 {
@@ -68,6 +76,9 @@ func newEntriesFixture(t *testing.T) (*EntriesService, *TrackerService, *fakeEnt
 				}
 			}
 			json.NewEncoder(w).Encode(list)
+		case r.Method == "POST" && f.reject:
+			w.WriteHeader(http.StatusBadRequest)
+			io.WriteString(w, `{"message":"Validation Failed","errors":{"children":{"activity":{"errors":["Ungültige Tätigkeit."]}}}}`)
 		case r.Method == "POST":
 			ts := map[string]any{"id": f.nextID, "begin": stamp(body["begin"]), "end": stamp(body["end"]),
 				"project":  map[string]any{"id": body["project"], "name": "Web", "customer": map[string]any{"id": 1, "name": "ACME"}},
@@ -102,7 +113,7 @@ func newEntriesFixture(t *testing.T) (*EntriesService, *TrackerService, *fakeEnt
 	if _, err := settings.SaveSettings(SettingsInput{KimaiURL: srv.URL, Token: "tok"}); err != nil {
 		t.Fatal(err)
 	}
-	tr := NewTrackerService(conn, settings, NewCatalog(filepath.Join(dir, "cache.json"), filepath.Join(dir, "state.json")))
+	tr := NewTrackerService(conn, settings, NewCatalog(filepath.Join(dir, "cache.json"), filepath.Join(dir, "state.json")), NewOutbox(filepath.Join(dir, "pending.json")))
 	e := NewEntriesService(tr)
 	e.now = func() time.Time { return time.Date(2026, 10, 13, 12, 0, 0, 0, time.Local) }
 	return e, tr, f

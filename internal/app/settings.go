@@ -299,6 +299,14 @@ func (s *SettingsService) LastConnection() ConnectionResult {
 	return s.CheckConnection()
 }
 
+// knownOffline reports whether the last check found Kimai unreachable. It
+// never contacts Kimai, so offline actions do not wait for a timeout.
+func (s *SettingsService) knownOffline() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.last != nil && s.last.Status == StatusOffline
+}
+
 func (s *SettingsService) check(url, token string, remember bool) ConnectionResult {
 	if strings.TrimSpace(token) == "" {
 		return result(StatusUnauthorized, "Bitte einen API-Token eingeben.", url)
@@ -384,6 +392,9 @@ func DescribeError(err error) (status, message string) {
 	}
 	var apiErr *kimai.APIError
 	if errors.As(err, &apiErr) {
+		if isUnreachable(err) {
+			return StatusOffline, fmt.Sprintf("Kimai ist gerade nicht erreichbar (%d). Bitte später erneut versuchen.", apiErr.StatusCode)
+		}
 		if len(apiErr.Details) > 0 {
 			return StatusError, "Kimai lehnt das ab: " + strings.Join(apiErr.Details, " ")
 		}

@@ -94,7 +94,7 @@ func newTrackerFixture(t *testing.T) (*TrackerService, *fakeTimesheets, *httptes
 		t.Fatal(err)
 	}
 	catalog := NewCatalog(filepath.Join(dir, "cache.json"), filepath.Join(dir, "state.json"))
-	return NewTrackerService(conn, settings, catalog), f, srv
+	return NewTrackerService(conn, settings, catalog, NewOutbox(filepath.Join(dir, "pending.json"))), f, srv
 }
 
 func TestTrackerStartStopAndDescription(t *testing.T) {
@@ -195,9 +195,6 @@ func TestTrackerListsUseCacheWhenOffline(t *testing.T) {
 	if _, err := tr.Projects(2, false); err == nil {
 		t.Error("uncached list while offline should fail")
 	}
-	if _, err := tr.Start(StartRequest{Customer: Selection{ID: 1}, Project: Selection{ID: 10}, Activity: Selection{ID: 100}}); err == nil {
-		t.Error("start while offline should fail")
-	}
 }
 
 func TestTrackerRequiresSelection(t *testing.T) {
@@ -210,7 +207,7 @@ func TestTrackerRequiresSelection(t *testing.T) {
 func TestTrackerSelectionSurvivesRestart(t *testing.T) {
 	tr, _, _ := newTrackerFixture(t)
 	tr.SaveSelection(Selection{ID: 1, Name: "ACME"}, Selection{ID: 10, Name: "Web"}, Selection{}, "Entwurf")
-	again := NewTrackerService(tr.conn, tr.settings, NewCatalog(tr.catalog.cachePath, tr.catalog.statePath))
+	again := NewTrackerService(tr.conn, tr.settings, NewCatalog(tr.catalog.cachePath, tr.catalog.statePath), NewOutbox(tr.outbox.path))
 	again.restoreSelection()
 	if st := again.State(); st.Project.Name != "Web" || st.Description != "Entwurf" {
 		t.Errorf("restored = %+v", st)

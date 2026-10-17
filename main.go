@@ -36,6 +36,7 @@ func init() {
 	application.RegisterEvent[bool]("theme:changed")
 	application.RegisterEvent[app.ConnectionResult](app.EventConnectionChanged)
 	application.RegisterEvent[app.TrackerState](app.EventTrackerChanged)
+	application.RegisterEvent[app.PendingStatus](app.EventPendingChanged)
 	application.RegisterEvent[app.ShellStatus](app.EventShellChanged)
 	application.RegisterEvent[string](app.EventNavigate)
 	application.RegisterEvent[app.VoiceState](app.EventVoiceState)
@@ -78,6 +79,15 @@ func openCatalog() *app.Catalog {
 	return app.NewCatalog(cachePath, statePath)
 }
 
+// openOutbox opens the entries saved while Kimai was unreachable (~/.config).
+func openOutbox() *app.Outbox {
+	path, err := config.DefaultStatePath("pending.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+	return app.NewOutbox(path)
+}
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--check-keyring" {
 		os.Exit(checkKeyring())
@@ -92,7 +102,7 @@ func main() {
 	store := openConfig()
 	conn := app.NewConnection(store, config.Keyring{}, &config.FileSecrets{Path: secretsPath})
 	settings := app.NewSettingsService(conn)
-	tracker := app.NewTrackerService(conn, settings, openCatalog())
+	tracker := app.NewTrackerService(conn, settings, openCatalog(), openOutbox())
 	notifier := notifications.New()
 	shell := app.NewShell(store, tracker, notifier)
 

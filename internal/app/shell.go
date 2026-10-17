@@ -167,10 +167,15 @@ func (s *Shell) onTrackerChanged(st TrackerState) {
 	s.refreshMenu()
 
 	switch {
+	case st.Running && prev.Running && prev.Offline && !st.Offline:
+		// The offline timer has just been sent to Kimai – nothing new for the user.
 	case st.Running && (!prev.Running || prev.TimesheetID != st.TimesheetID):
 		body := st.Project.Name + " · " + st.Activity.Name
 		if st.Customer.Name != "" {
 			body += "\n" + st.Customer.Name
+		}
+		if st.Offline {
+			body += "\nOffline – wird übertragen, sobald Kimai erreichbar ist."
 		}
 		s.notify("Timer gestartet", body)
 	case !st.Running && prev.Running:
@@ -199,6 +204,9 @@ func (s *Shell) refreshMenu() {
 			status += " – " + st.Project.Name
 		}
 		detail = strings.Trim(st.Customer.Name+" · "+st.Activity.Name, " ·")
+		if st.Offline {
+			detail = strings.TrimPrefix(detail+" · offline", " · ")
+		}
 		timer = "Timer stoppen"
 	} else if st.Project.ID != 0 && st.Activity.ID != 0 {
 		timer = "Timer starten – " + st.Project.Name

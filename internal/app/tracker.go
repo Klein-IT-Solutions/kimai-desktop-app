@@ -29,6 +29,9 @@ type TrackerState struct {
 	Project     Selection `json:"project"`
 	Activity    Selection `json:"activity"`
 	Description string    `json:"description"`
+	// Offline is set for a timer started while Kimai was unreachable. It only
+	// exists locally (TimesheetID is its negative local ID) until it is synced.
+	Offline bool `json:"offline"`
 }
 
 // StartRequest starts a new timer.
@@ -44,15 +47,27 @@ type TrackerService struct {
 	conn     *Connection
 	settings *SettingsService
 	catalog  *Catalog
+	outbox   *Outbox
+	now      func() time.Time
+	// recheck refreshes the connection status after a connection problem.
+	recheck func()
+
+	// outboxMu serialises sending the outbox with local changes to it, so an
+	// entry is never sent twice or changed while it is being sent.
+	outboxMu sync.Mutex
 
 	mu     sync.Mutex
 	state  TrackerState
 	cancel context.CancelFunc
 }
 
-// NewTrackerService creates the service.
-func NewTrackerService(conn *Connection, settings *SettingsService, catalog *Catalog) *TrackerService {
-	return &TrackerService{conn: conn, settings: settings, catalog: catalog}
+// NewTrackerService creates the service. outbox keeps what is saved while
+// Kimai cannot be reached.
+func NewTrackerService(conn *Connection, settings *SettingsService, catalog *Catalog, outbox *Outbox) *TrackerService {
+	t := &TrackerService{conn: conn, settings: settings, catalog: catalog, outbox: outbox, now: time.Now}
+	t.recheck = func() { go settings.CheckConnection() }
+	outbox.onChange = t.emitPending
+	return t
 }
 
 // ServiceStartup restores the last selection and starts background syncing.
@@ -96,9 +111,15 @@ func (t *TrackerService) loop(ctx context.Context) {
 }
 
 func (t *TrackerService) restoreSelection() {
-	s := t.catalog.selection(t.baseURL())
+	base := t.baseURL()
+	s := t.catalog.selection(base)
+	timer, hasTimer := t.outbox.offlineTimer(base)
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if !t.state.Running && hasTimer {
+		t.state = offlineState(timer)
+		return
+	}
 	if !t.state.Running {
 		t.state.Customer, t.state.Project, t.state.Activity = s.Customer, s.Project, s.Activity
 		t.state.Description = s.Description
@@ -112,12 +133,16 @@ func (t *TrackerService) State() TrackerState {
 	return t.state
 }
 
-// Sync fetches the running timer from Kimai and adopts it. A timer stopped
-// elsewhere is reflected as stopped; the selection is kept.
+// Sync first sends entries saved offline to Kimai, then fetches the running
+// timer from Kimai and adopts it. A timer stopped elsewhere is reflected as
+// stopped; the selection is kept.
 func (t *TrackerService) Sync() (TrackerState, error) {
 	client, err := t.client()
 	if err != nil {
 		return t.State(), err
+	}
+	if err := t.flush(client); err != nil {
+		return t.State(), t.fail(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), kimai.DefaultTimeout)
 	defer cancel()
@@ -125,12 +150,25 @@ func (t *TrackerService) Sync() (TrackerState, error) {
 	if err != nil {
 		return t.State(), t.fail(err)
 	}
+	// Local changes that Kimai has not accepted yet win over its state.
+	base := t.baseURL()
+	kept := active[:0]
+	for _, ts := range active {
+		if _, pending := t.outbox.forTimesheet(base, ts.ID); !pending {
+			kept = append(kept, ts)
+		}
+	}
+	active = kept
 	t.mu.Lock()
-	if len(active) == 0 {
+	_, ownPending := t.outbox.forTimesheet(base, t.state.TimesheetID)
+	switch {
+	case t.state.Running && (t.state.Offline || ownPending):
+		// Only known locally so far; keep it.
+	case len(active) == 0:
 		t.state.Running = false
 		t.state.TimesheetID = 0
 		t.state.Begin = ""
-	} else {
+	default:
 		t.state = t.fromTimesheet(active[0], t.state)
 	}
 	st := t.state
@@ -226,6 +264,9 @@ func (t *TrackerService) Start(req StartRequest) (TrackerState, error) {
 	if err != nil {
 		return t.State(), err
 	}
+	if t.settings.knownOffline() {
+		return t.startOffline(req)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), kimai.DefaultTimeout)
 	defer cancel()
 	ts, err := client.StartTimesheet(ctx, kimai.StartInput{
@@ -234,6 +275,10 @@ func (t *TrackerService) Start(req StartRequest) (TrackerState, error) {
 		Description: strings.TrimSpace(req.Description),
 	})
 	if err != nil {
+		if isUnreachable(err) {
+			_ = t.fail(err) // updates the connection status
+			return t.startOffline(req)
+		}
 		return t.State(), t.fail(err)
 	}
 	base := t.baseURL()
@@ -253,9 +298,15 @@ func (t *TrackerService) Start(req StartRequest) (TrackerState, error) {
 // Stop stops the running timer. A timer already stopped or deleted in Kimai
 // counts as stopped.
 func (t *TrackerService) Stop() (TrackerState, error) {
-	t.mu.Lock()
-	id := t.state.TimesheetID
-	t.mu.Unlock()
+	// Wait for a running sync: it may just be sending an offline timer.
+	t.outboxMu.Lock()
+	st := t.State()
+	if st.Running && st.TimesheetID < 0 {
+		defer t.outboxMu.Unlock()
+		return t.stopLocally(st)
+	}
+	t.outboxMu.Unlock()
+	id := st.TimesheetID
 	if id == 0 {
 		return t.Sync()
 	}
@@ -263,13 +314,33 @@ func (t *TrackerService) Stop() (TrackerState, error) {
 	if err != nil {
 		return t.State(), err
 	}
+	if t.settings.knownOffline() {
+		return t.stopQueued(st)
+	}
+	// A description changed offline goes to Kimai before the stop.
+	if _, pending := t.outbox.forTimesheet(t.baseURL(), id); pending {
+		if err := t.flush(client); err != nil && isUnreachable(err) {
+			_ = t.fail(err)
+			return t.stopQueued(st)
+		}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), kimai.DefaultTimeout)
 	defer cancel()
 	if _, err := client.StopTimesheet(ctx, id); err != nil && !errors.Is(err, kimai.ErrNotFound) {
+		if isUnreachable(err) {
+			_ = t.fail(err)
+			return t.stopQueued(st)
+		}
 		return t.State(), t.fail(err)
 	}
+	return t.stopped(), nil
+}
+
+// stopped marks the timer as stopped and keeps the selection.
+func (t *TrackerService) stopped() TrackerState {
 	t.mu.Lock()
 	t.state.Running = false
+	t.state.Offline = false
 	t.state.TimesheetID = 0
 	t.state.Begin = ""
 	t.state.Description = ""
@@ -277,7 +348,7 @@ func (t *TrackerService) Stop() (TrackerState, error) {
 	t.mu.Unlock()
 	t.catalog.saveSelection(t.baseURL(), st.Customer, st.Project, st.Activity, "")
 	t.emit(st)
-	return st, nil
+	return st
 }
 
 // SetDescription updates the description of the running timer in Kimai.
@@ -291,14 +362,27 @@ func (t *TrackerService) SetDescription(description string) (TrackerState, error
 		t.SaveSelection(st.Customer, st.Project, st.Activity, description)
 		return t.State(), nil
 	}
+	if id < 0 {
+		if st, done, err := t.setOfflineDescription(id, description); done {
+			return st, err
+		}
+		id = t.State().TimesheetID // sent to Kimai meanwhile
+	}
 	client, err := t.client()
 	if err != nil {
 		return t.State(), err
+	}
+	if t.settings.knownOffline() {
+		return t.queueDescription(id, description)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), kimai.DefaultTimeout)
 	defer cancel()
 	ts, err := client.UpdateDescription(ctx, id, description)
 	if err != nil {
+		if isUnreachable(err) {
+			_ = t.fail(err)
+			return t.queueDescription(id, description)
+		}
 		return t.State(), t.fail(err)
 	}
 	t.mu.Lock()
@@ -348,9 +432,8 @@ func (t *TrackerService) fromTimesheet(ts kimai.Timesheet, prev TrackerState) Tr
 // fail converts err for the UI. Connection problems (offline, token revoked)
 // trigger a fresh connection check so the status and start button update.
 func (t *TrackerService) fail(err error) error {
-	if errors.Is(err, kimai.ErrOffline) || errors.Is(err, kimai.ErrUnauthorized) ||
-		errors.Is(err, kimai.ErrCertificate) || errors.Is(err, context.DeadlineExceeded) {
-		go t.settings.CheckConnection()
+	if isUnreachable(err) || errors.Is(err, kimai.ErrUnauthorized) || errors.Is(err, kimai.ErrCertificate) {
+		t.recheck()
 	}
 	return userError(err)
 }

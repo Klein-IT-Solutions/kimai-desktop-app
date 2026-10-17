@@ -23,7 +23,7 @@ export function Day(date: string): $CancellablePromise<$models.DayEntries> {
 }
 
 /**
- * Delete removes an entry from Kimai.
+ * Delete removes an entry from Kimai, or a locally saved one.
  */
 export function Delete(id: number): $CancellablePromise<void> {
     return $Call.ByID(3943886975, id);

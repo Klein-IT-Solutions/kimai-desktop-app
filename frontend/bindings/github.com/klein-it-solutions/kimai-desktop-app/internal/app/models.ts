@@ -94,6 +94,12 @@ export interface DayEntries {
      * seconds
      */
     "total": number;
+
+    /**
+     * Offline is set when Kimai could not be reached: only entries saved
+     * locally (and a running timer) are listed.
+     */
+    "offline": boolean;
 }
 
 /**
@@ -138,6 +144,16 @@ export interface Entry {
     "project": Selection;
     "activity": Selection;
     "description": string;
+
+    /**
+     * Pending marks entries saved locally that are not in Kimai yet.
+     */
+    "pending": boolean;
+
+    /**
+     * SyncError is why Kimai rejected a pending entry.
+     */
+    "syncError"?: string;
 }
 
 /**
@@ -225,6 +241,18 @@ export interface OptionList {
      * Message explains why the list is stale.
      */
     "message"?: string;
+}
+
+/**
+ * PendingStatus summarises the entries waiting for Kimai.
+ */
+export interface PendingStatus {
+    "count": number;
+
+    /**
+     * Failed counts entries Kimai rejected; they need a correction.
+     */
+    "failed": number;
 }
 
 /**
@@ -335,6 +363,12 @@ export interface TrackerState {
     "project": Selection;
     "activity": Selection;
     "description": string;
+
+    /**
+     * Offline is set for a timer started while Kimai was unreachable. It only
+     * exists locally (TimesheetID is its negative local ID) until it is synced.
+     */
+    "offline": boolean;
 }
 
 /**

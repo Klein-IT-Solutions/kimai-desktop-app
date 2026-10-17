@@ -24,6 +24,9 @@ für Teams und als Whitelabel-Lösung lizenzierbar, siehe [Lizenz](#lizenz).
   Kimai gespeichert.
 - **Nachtragen und korrigieren:** Start vergessen oder lieber abends alles eintragen? Einträge
   lassen sich nachträglich anlegen, ändern und löschen, mit Diktat und KI-Stichpunkten.
+- **Funktioniert auch offline:** Ist Kimai nicht erreichbar (Zug, Kunde ohne WLAN), läuft der
+  Timer lokal weiter und neue Einträge werden auf deinem Rechner gespeichert. Sobald die
+  Verbindung wieder da ist, überträgt die App alles automatisch an Kimai.
 - **Läuft im Hintergrund:** Symbol im Infobereich mit laufender Zeit, Start/Stopp per
   Tastenkürzel, auf Wunsch Start bei der Anmeldung.
 - **Spracheingabe:** Beschreibung einfach diktieren, wahlweise komplett offline auf deinem

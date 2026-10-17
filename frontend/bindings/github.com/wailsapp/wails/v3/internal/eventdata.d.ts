@@ -15,6 +15,7 @@ declare module "@wailsio/runtime" {
             "assistant:download": app$0.AssistantDownload;
             "connection:changed": app$0.ConnectionResult;
             "navigate": string;
+            "pending:changed": app$0.PendingStatus;
             "shell:changed": app$0.ShellStatus;
             "theme:changed": boolean;
             "tracker:changed": app$0.TrackerState;

@@ -26,12 +26,20 @@ export function initConnection() {
   Events.On("connection:changed", (ev) => {
     connection.result = ev.data as ConnectionResult;
   });
+  // Network back (e.g. Wi-Fi reconnected): check right away instead of
+  // waiting for the next background check, so saved entries are sent.
+  window.addEventListener("online", () => {
+    if (connection.result && !connection.result.ok && connection.result.status === "offline") refreshConnection();
+  });
   connection.checking = true;
   SettingsService.LastConnection()
     .then((r) => (connection.result = r))
     .catch(() => {})
     .finally(() => (connection.checking = false));
 }
+
+/** Kimai is configured but cannot be reached; entries are kept locally. */
+export const isOffline = () => connection.result?.status === "offline";
 
 /** Extracts a readable message from a rejected backend call. */
 export function errorMessage(e: unknown): string {

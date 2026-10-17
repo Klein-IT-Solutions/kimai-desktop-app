@@ -45,9 +45,14 @@
     });
   });
 
-  // Started or stopped elsewhere (tray, hotkey, Kimai web UI).
-  const off = Events.On("tracker:changed", () => load());
-  onDestroy(() => off());
+  // Started or stopped elsewhere (tray, hotkey, Kimai web UI), or entries
+  // saved offline were sent to Kimai.
+  const offTracker = Events.On("tracker:changed", () => load());
+  const offPending = Events.On("pending:changed", () => load());
+  onDestroy(() => {
+    offTracker();
+    offPending();
+  });
 
   const go = (days: number) => (date = addDays(date || today, days));
   const entries = $derived(day?.entries ?? []);
@@ -75,12 +80,17 @@
   </div>
 
   <div class="mt-2 min-h-0 flex-1 overflow-y-auto">
+    {#if day?.offline && !error}
+      <div class="mb-2 rounded-[10px] bg-warning/15 px-3 py-2 text-[12px] leading-snug">
+        Offline – es werden nur lokal gespeicherte Einträge angezeigt. Neue Einträge werden übertragen, sobald Kimai erreichbar ist.
+      </div>
+    {/if}
     {#if error}
       <div class="rounded-[10px] bg-danger/12 px-3 py-2.5 text-[12px] leading-snug">{error}</div>
     {:else if !loading && entries.length === 0}
       <div class="flex h-full flex-col items-center justify-center gap-1 text-center text-fg-muted">
         <Icon name="clock" size={28} stroke={1.4} />
-        <p class="mt-1 text-[13px]">Keine Einträge an diesem Tag.</p>
+        <p class="mt-1 text-[13px]">{day?.offline ? "Keine lokal gespeicherten Einträge." : "Keine Einträge an diesem Tag."}</p>
         <p class="text-[11px] text-fg-subtle">Vergessen zu starten? Einfach nachtragen.</p>
       </div>
     {:else}
@@ -98,6 +108,13 @@
               <div class="truncate text-[11px] text-fg-subtle">
                 {entry.customer.name}{#if entry.description}{" · "}{entry.description.replace(/\s*\n\s*/g, " ")}{/if}
               </div>
+              {#if entry.syncError}
+                <div class="mt-0.5 line-clamp-2 text-[11px] leading-snug text-danger">Nicht übertragen: {entry.syncError}</div>
+              {:else if entry.pending}
+                <div class="mt-0.5 flex items-center gap-1 text-[11px] text-fg-muted">
+                  <Icon name="refresh" size={11} /> Noch nicht an Kimai übertragen
+                </div>
+              {/if}
             </button>
           </li>
         {/each}

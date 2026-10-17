@@ -76,7 +76,7 @@
     {#key view}
       <div class="absolute inset-0" in:fly={slide(dir)} out:fly={{ ...slide(dir === 1 ? -1 : 1), duration: 180 }}>
         {#if view === "tracker"}
-          <TrackerView onOpenSettings={() => show("settings")} onEditRunning={editRunning} />
+          <TrackerView onOpenSettings={() => show("settings")} onEditRunning={editRunning} onOpenEntries={() => show("entries")} />
         {:else if view === "settings"}
           <SettingsView onShowLegal={() => show("legal")} />
         {:else if view === "entries"}

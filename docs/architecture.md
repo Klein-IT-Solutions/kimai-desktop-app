@@ -126,6 +126,33 @@ full start → update → stop flow against a real instance (`make kimai-up`).
 - The description of a running timer is PATCHed ~0.7 s after typing stops; without a
   running timer it is kept as draft for the next start.
 
+## Offline entries
+
+- When Kimai cannot be reached (network error, timeout, HTTP 502/503/504 from a proxy, or
+  the last connection check said *offline*), changes are kept in an outbox instead of
+  failing: `~/.config/kimai-tracker/pending.json` (`app.Outbox`, mode 0600). Each entry
+  stores absolute begin/end times and the Kimai URL it belongs to; entries of another URL
+  are kept, not discarded, and sent when that URL is configured again.
+- What is queued: new entries, changes of existing entries (keyed by Kimai ID, a later
+  change replaces an earlier one), a timer stopped offline (a change with an end time),
+  the description of a running timer, and a timer **started** offline. The offline timer
+  only exists locally; `TrackerState.Offline` is set and `TimesheetID` is its negative
+  local ID, so the editor and "seit … Uhr" work as usual. It survives a restart.
+- Deleting works offline only for entries that are not in Kimai yet.
+- `TrackerService.Sync` first sends the outbox (oldest first, a running offline timer
+  last, started in Kimai with its original begin), then reconciles the running timer.
+  Sync runs when the connection becomes OK (background check every 60 s, the browser
+  `online` event, any successful check) and after a pending entry is edited while online.
+  A connection problem stops sending; an entry Kimai rejects keeps the reason
+  (`Entry.SyncError`) and is retried on every sync until it is corrected or deleted.
+  Sending and local changes to the outbox are serialised (`outboxMu`), so nothing is
+  sent twice.
+- Kimai's running timer is not adopted while a local change for it is pending.
+- `pending:changed` (`PendingStatus`) tells the UI how many entries wait; the entries list
+  marks them and, while offline, shows only local entries plus the running timer.
+- Pickers offline use the list cache, so customers/projects/activities that were never
+  opened online are not available.
+
 ## Background operation
 
 - `Shell` (not bound) owns the tray icon, close-to-tray, the global hotkey,

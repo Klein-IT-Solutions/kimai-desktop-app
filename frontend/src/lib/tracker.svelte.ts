@@ -3,6 +3,7 @@ import {
   TrackerService,
   type ConnectionResult,
   type Option,
+  type PendingStatus,
   type Selection,
   type TrackerState,
 } from "../../bindings/github.com/klein-it-solutions/kimai-desktop-app/internal/app";
@@ -19,21 +20,34 @@ export const tracker = $state({
     project: { ...empty },
     activity: { ...empty },
     description: "",
+    offline: false,
   } as TrackerState,
   busy: false,
   error: "",
   descriptionStatus: "" as "" | "saving" | "saved" | "error",
 });
 
+/** Entries saved while Kimai was unreachable that still wait to be sent. */
+export const pending = $state<PendingStatus>({ count: 0, failed: 0 });
+
 function apply(st: TrackerState) {
   tracker.state = st;
+}
+
+function applyPending(p: PendingStatus) {
+  pending.count = p.count;
+  pending.failed = p.failed;
 }
 
 export function initTracker() {
   TrackerService.State()
     .then(apply)
     .catch(() => {});
+  TrackerService.Pending()
+    .then(applyPending)
+    .catch(() => {});
   Events.On("tracker:changed", (ev) => apply(ev.data as TrackerState));
+  Events.On("pending:changed", (ev) => applyPending(ev.data as PendingStatus));
   // Whenever the connection becomes usable, pick up a timer running in Kimai.
   Events.On("connection:changed", (ev) => {
     if ((ev.data as ConnectionResult).ok) {

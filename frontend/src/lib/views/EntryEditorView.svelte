@@ -62,7 +62,8 @@
   let stopping = $state(false); // running entry gets an end time
 
   let saving = $state(false);
-  let error = $state("");
+  // A locally saved entry that Kimai rejected shows the reason until it is fixed.
+  let error = $state(initial?.syncError ? `Nicht übertragen: ${initial.syncError}` : "");
   let confirmDelete = $state(false);
   let pickerOpen = $state(false);
 

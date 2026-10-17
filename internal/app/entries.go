@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -27,6 +28,10 @@ type Entry struct {
 	Project     Selection `json:"project"`
 	Activity    Selection `json:"activity"`
 	Description string    `json:"description"`
+	// Pending marks entries saved locally that are not in Kimai yet.
+	Pending bool `json:"pending"`
+	// SyncError is why Kimai rejected a pending entry.
+	SyncError string `json:"syncError,omitempty"`
 }
 
 // DayEntries lists the entries of one day.
@@ -36,6 +41,9 @@ type DayEntries struct {
 	Now     string  `json:"now"` // current time (HH:MM) in the Kimai time zone
 	Entries []Entry `json:"entries"`
 	Total   int     `json:"total"` // seconds
+	// Offline is set when Kimai could not be reached: only entries saved
+	// locally (and a running timer) are listed.
+	Offline bool `json:"offline"`
 }
 
 // EntryInput creates (ID 0) or changes an entry. End may only be empty for
@@ -80,19 +88,93 @@ func (e *EntriesService) Day(date string) (DayEntries, error) {
 	if err != nil {
 		return DayEntries{}, errors.New("Ungültiges Datum.")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), kimai.DefaultTimeout)
-	defer cancel()
-	list, err := client.Timesheets(ctx, day, day.AddDate(0, 0, 1).Add(-time.Second))
-	if err != nil {
-		return DayEntries{}, e.tracker.fail(err)
-	}
 	out := DayEntries{Date: date, Today: date == today, Now: now.Format(clockLayout), Entries: []Entry{}}
+	var list []kimai.Timesheet
+	if e.tracker.settings.knownOffline() {
+		out.Offline = true
+	} else {
+		ctx, cancel := context.WithTimeout(context.Background(), kimai.DefaultTimeout)
+		defer cancel()
+		list, err = client.Timesheets(ctx, day, day.AddDate(0, 0, 1).Add(-time.Second))
+		if err != nil {
+			if !isUnreachable(err) {
+				return DayEntries{}, e.tracker.fail(err)
+			}
+			_ = e.tracker.fail(err)
+			out.Offline = true
+		}
+	}
+
+	// Local changes replace what Kimai knows; new local entries are added.
+	base := e.tracker.baseURL()
+	pending := map[int]PendingEntry{}
+	for _, p := range e.tracker.outbox.list(base) {
+		if p.Begin.In(loc).Format(dateLayout) == date {
+			pending[p.ID] = p
+		}
+	}
 	for _, ts := range list {
-		entry := e.entry(ts, loc, now)
-		out.Entries = append(out.Entries, entry)
+		if p, ok := e.tracker.outbox.forTimesheet(base, ts.ID); ok {
+			delete(pending, p.ID)
+			if p.Begin.In(loc).Format(dateLayout) != date {
+				continue // moved to another day
+			}
+			out.Entries = append(out.Entries, pendingEntry(p, loc, now))
+			continue
+		}
+		out.Entries = append(out.Entries, e.entry(ts, loc, now))
+	}
+	if out.Offline {
+		// Kimai's entries are unknown, but the running timer is.
+		if st := e.tracker.State(); st.Running && st.TimesheetID > 0 {
+			if _, ok := e.tracker.outbox.forTimesheet(base, st.TimesheetID); !ok {
+				if begin, err := time.Parse(time.RFC3339, st.Begin); err == nil && begin.In(loc).Format(dateLayout) == date {
+					out.Entries = append(out.Entries, pendingEntry(PendingEntry{
+						TimesheetID: st.TimesheetID, Begin: begin, Customer: st.Customer,
+						Project: st.Project, Activity: st.Activity, Description: st.Description,
+					}, loc, now))
+					out.Entries[len(out.Entries)-1].Pending = false
+				}
+			}
+		}
+	}
+	for _, p := range pending {
+		out.Entries = append(out.Entries, pendingEntry(p, loc, now))
+	}
+	sort.SliceStable(out.Entries, func(i, j int) bool { return out.Entries[i].Begin < out.Entries[j].Begin })
+	for _, entry := range out.Entries {
 		out.Total += entry.Duration
 	}
 	return out, nil
+}
+
+// pendingEntry converts a locally saved entry for the list. Changes of a
+// Kimai entry keep its Kimai ID, so editing them works as usual.
+func pendingEntry(p PendingEntry, loc *time.Location, now time.Time) Entry {
+	id := p.ID
+	if p.TimesheetID > 0 {
+		id = p.TimesheetID
+	}
+	begin := p.Begin.In(loc)
+	entry := Entry{
+		ID:          id,
+		Date:        begin.Format(dateLayout),
+		Begin:       begin.Format(clockLayout),
+		Running:     p.Running(),
+		Customer:    p.Customer,
+		Project:     p.Project,
+		Activity:    p.Activity,
+		Description: p.Description,
+		Pending:     true,
+		SyncError:   p.Error,
+	}
+	if entry.Running {
+		entry.Duration = max(0, int(now.Sub(p.Begin).Seconds()))
+	} else {
+		entry.End = p.End.In(loc).Format(clockLayout)
+		entry.Duration = max(0, int(p.End.Sub(p.Begin).Seconds()))
+	}
+	return entry
 }
 
 // Save creates or updates an entry in Kimai.
@@ -127,6 +209,9 @@ func (e *EntriesService) Save(in EntryInput) (Entry, error) {
 		}
 	}
 
+	if offline := e.tracker.settings.knownOffline(); in.ID < 0 || offline {
+		return e.saveLocally(in, begin, end, loc, now, !offline)
+	}
 	input := kimai.EntryInput{
 		ProjectID:   in.Project.ID,
 		ActivityID:  in.Activity.ID,
@@ -143,8 +228,14 @@ func (e *EntriesService) Save(in EntryInput) (Entry, error) {
 		ts, err = client.UpdateTimesheet(ctx, in.ID, input)
 	}
 	if err != nil {
+		if isUnreachable(err) {
+			_ = e.tracker.fail(err)
+			return e.saveLocally(in, begin, end, loc, now, false)
+		}
 		return Entry{}, e.tracker.fail(err)
 	}
+	// An older local change of this entry is obsolete now.
+	e.tracker.outbox.removeTimesheet(e.tracker.baseURL(), in.ID)
 	e.tracker.catalog.markUsed(e.tracker.baseURL(), in.Customer, in.Project, in.Activity)
 	if in.ID != 0 && in.ID == runningID {
 		// Stopped by giving it an end, or changed: refresh the timer.
@@ -157,19 +248,93 @@ func (e *EntriesService) Save(in EntryInput) (Entry, error) {
 	return entry, nil
 }
 
-// Delete removes an entry from Kimai.
+// saveLocally keeps a new or changed entry until Kimai is reachable again.
+// With trySync the outbox is sent right away (Kimai seems reachable).
+func (e *EntriesService) saveLocally(in EntryInput, begin, end time.Time, loc *time.Location, now time.Time, trySync bool) (Entry, error) {
+	t := e.tracker
+	t.outboxMu.Lock()
+	base := t.baseURL()
+	p := PendingEntry{
+		BaseURL:     base,
+		Begin:       begin,
+		End:         end,
+		Customer:    in.Customer,
+		Project:     in.Project,
+		Activity:    in.Activity,
+		Description: strings.TrimSpace(in.Description),
+		SavedAt:     now,
+	}
+	switch {
+	case in.ID < 0:
+		old, ok := t.outbox.get(base, in.ID)
+		if !ok {
+			t.outboxMu.Unlock()
+			return Entry{}, errors.New("Der Eintrag wurde inzwischen an Kimai übertragen. Bitte die Liste neu laden.")
+		}
+		p.ID, p.TimesheetID = old.ID, old.TimesheetID
+	case in.ID > 0:
+		p.TimesheetID = in.ID
+	}
+	p, err := t.outbox.put(p)
+	t.outboxMu.Unlock()
+	if err != nil {
+		return Entry{}, err
+	}
+	t.catalog.markUsed(base, in.Customer, in.Project, in.Activity)
+
+	if st := t.State(); in.ID != 0 && in.ID == st.TimesheetID && st.Running {
+		if p.Running() {
+			t.mu.Lock()
+			if t.state.TimesheetID == in.ID {
+				t.state.Begin = begin.Format(time.RFC3339)
+				t.state.Customer, t.state.Project, t.state.Activity = in.Customer, in.Project, in.Activity
+				t.state.Description = p.Description
+			}
+			st = t.state
+			t.mu.Unlock()
+			t.emit(st)
+		} else {
+			t.stopped()
+		}
+	}
+	// E.g. a rejected entry was corrected: send it right away.
+	if trySync {
+		_, _ = t.Sync()
+	}
+	return pendingEntry(p, loc, now), nil
+}
+
+// Delete removes an entry from Kimai, or a locally saved one.
 func (e *EntriesService) Delete(id int) error {
-	client, err := e.tracker.client()
+	t := e.tracker
+	base := t.baseURL()
+	if id < 0 {
+		t.outboxMu.Lock()
+		t.outbox.remove(base, id)
+		t.outboxMu.Unlock()
+		if st := t.State(); st.Running && st.TimesheetID == id {
+			t.stopped()
+		}
+		return nil
+	}
+	client, err := t.client()
 	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), kimai.DefaultTimeout)
 	defer cancel()
 	if err := client.DeleteTimesheet(ctx, id); err != nil && !errors.Is(err, kimai.ErrNotFound) {
-		return e.tracker.fail(err)
+		if isUnreachable(err) {
+			_ = t.fail(err)
+			return errors.New("Kimai ist nicht erreichbar. Offline lassen sich nur Einträge löschen, die noch nicht übertragen wurden.")
+		}
+		return t.fail(err)
 	}
-	if id == e.tracker.State().TimesheetID {
-		_, _ = e.tracker.Sync()
+	t.outboxMu.Lock()
+	t.outbox.removeTimesheet(base, id)
+	t.outboxMu.Unlock()
+	if id == t.State().TimesheetID {
+		_, _ = t.Sync()
 	}
 	return nil
 }
